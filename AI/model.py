@@ -36,7 +36,7 @@ class QNetwork(tf.keras.Model):
         action_size: 가능한 행동의 수 
                      에이전트가 취할 수 있는 다른 액션의 개수
 
-        hidden_units: 각 은닉층의 뉴런 수를 나타내는 리스트
+        hidden_units: 각 은닉층의 뉴런 수를 나타내는 리스트 (모델의 복잡도 조정 가능)
                       은닉층의 수와 각 은닉층의 뉴런 수를 동적으로 결정하는 것이 가능
         """
         super(QNetwork, self).__init__()
@@ -96,3 +96,59 @@ class QNetwork(tf.keras.Model):
     이러한 구조를 통해, Q-Network모델은 주어진 상태에 대해 모든 가능한 행동의 Q-Value를 출력할 수 있음.
     이 정보는 강화학습에서 에이전트가 어떤 행동을 취할지 결정하는 데에 사용됨.
     """
+
+class EnvironmentModel(tf.keras.Model):
+    """
+    상태와 행동을 입력받아 다음 상태와 예상 보상을 예측하는 환경 모델
+
+    이 모델은 강화학습에서 환경의 동적인 특성을 내부적으로 모델링하여,
+    실제 환경과 상호작용하지 않고도 행동의 결과를 예측할 수 있게 함.
+    """
+    def __init__(self, state_size, action_size, hidden_units=[24, 24]):
+        """
+        환경 모델 초기화
+
+        :param state_size: 상태 벡터의 크기
+        :param action_size: 액션 벡터의 크기
+        :param hidden_units: 은닉층에서 사용할 뉴런 수
+        """
+
+        super(EnvironmentModel, self).__init__()
+        """
+        EnviornmentModel 클래스가 tf.keras.Model 클래스를 상속 받았기에,
+        부모 클래스의 생성자를 호출하여 초기화함. 이와 같은 방법으로
+        tf.keras.Model의 모든 속성과 메서드를 EnviornmentModel에서도 사용할 수 있게 해줌.
+        """
+
+        # 상태를 처리할 신경망 층을 초기화
+        self.state_processor = [tf.keras.layers.Dense(units, activation='relu', input_shape=(state_size,))
+                                for units in hidden_units]
+        # 행동을 처리할 신경망 층을 초기화
+        self.action_processor = [tf.keras.layers.Dense(units, activation='relu', input_shape=(action_size,))
+                                 for units in hidden_units]
+        # 처리된 상태와 행동을 결합한 후 처리할 신경망 층을 초기화
+        self.combined_processor = [tf.keras.layers.Dense(units, activation='relu')
+                                   for units in hidden_units]
+        # 결합된 정보를 바탕으로 다음 상태를 예측하는 출력층을 초기화
+        self.state_output = tf.keras.layers.Dense(state_size, activation='linear')
+        # 결합된 정보를 바탕으로 예상 보상을 예측하는 출력층을 초기화
+        self.reward_output = tf.keras.layers.Dense(1, activation='linear')
+
+    def call(self, inputs):
+        """모델을 통해 입력 데이터(상태, 액션)를 전달하고 다음 상태와 예상 보상을 계산함."""
+        state, action = inputs
+        # 상태와 액션 각각을 처리함
+        state_processed = state
+        action_processed = action
+        for layer in self.state_processor:
+            state_processed = layer(state_processed)
+        for layer in self.action_processor:
+            action_processed = layer(action_processed)
+        # 처리된 상태와 액션을 결합
+        combined = tf.concat([state_processed, action_processed], axis=1)
+        for layer in self.combined_processor:
+            combined = layer(combined)
+        # 결합된 정보를 바탕으로 다음 상태와 예상 보상을 계산함.
+        next_state = self.state_output(combined)
+        reward = self.reward_output(combined)
+        return next_state, reward

@@ -4,56 +4,46 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-def plot_learning_curve(scores, filename, x=None, title='learning Curve'):
+def plot_learning_curves(data, titles, filename):
     """
-    학습 과정에서, 각 에피소드가 얻은 점수(보상) 변화를 그래프로 시각화
-    scores: 에피소드별 점수 리스트
-    filename: 그래프 이미지를 저장할 파일 경로
-    x: 에피소드 번호 리스트
-    title: 그래프 제목
+    학습 과정에서 변화하는 여러 지표들을 그래프로 시각화
+
+    :param data: 그래프로 나타낼 데이터의 리스트. 각 요소는 그래프로 나타낼 데이터의 시퀀스.
+    :param titles: 각 서브플롯의 제목 리스트
+    :param filename: 그래프 이미지를 저장할 파일 경로
     """
-    if x is None:
-        x = [i+1 for i in range(len(scores))]
-    plt.figure(figsize=(10, 6)) # 그래프 크기 설정
-    plt.plot(x, scores, label='Scores')
-    plt.title(title)
-    plt.xlabel('Episode')
-    plt.ylabel('Score')
-    plt.legend()
+    num_plots = len(data)
+    plt.figure(figsize=(10, 6 * num_plots)) # 그래프 크기 설정
+    for i, (plot_data, title) in enumerate(zip(data, titles), 1):
+        plt.subplot(num_plots, 1, i)
+        plt.plot(plot_data)
+        plt.titlel(title)
+        plt.xlabel('Episode')
+    plt.tight_layout()
     plt.savefig(filename)
     plt.close() # 현재 그래프 닫기
 
 def smooth_scores(scores, window=10):
     """
     (점수 변화가 너무 급격하거나 노이즈가 심할 경우), 점수(보상)의 이동 평균을 계산하여 부드러운 학습 곡선 생성
-    window: 이동 평균을 계산할 윈도우 크기
+
+    :param scores: 에피소드별 점수 리스트
+    :param window: 이동 평균을 계산할 윈도우 크기
     """
-    smoothed_scores = np.convolve(scores, np.ones(window)/window, 'valid')
+    smoothed_scores = pd.Series(scores).rolling(window, min_periods=1).mean().tolist()
     return smoothed_scores
 
-def plot_smoothed_learning_curve(scores, filename, window=10, **kwargs):
+def plot_and_save_all_curves(rewards, epsilons, learning_rates, steps, filename):
     """
-    부드러운 학습 곡선을 그래프로 표시
-    window: 이동 평균을 계산할 윈도우 크기
-    **kwargs: plot_learning_curve 함수에 전달할 추가 인자들
-    """
-    smoothed_scores = smooth_scores(scores, window)
-    plot_learning_curve(smoothed_scores, filename, **kwargs)
+    보상, ε값의 변화, 학습률의 변화, 스텝 수 등의 학습 과정 지표를 시각화하고 저장
 
-def save_model_weights(model, filename):
-    """학습된 모델의 가중치를 파일로 저장"""
-    model.save_weights(filename)
-
-def load_model_weights(model, filename):
-    """파일에서, 학습된 모델의 가중치를 로드"""
-    model.load_weights(filename)
-
-# 데이터 분석을 위한 추가 함수
-def analyze_data(data):
+    :param rewards: 에피소드별 총 보상 리스트
+    :param epsilons: 에피소드별 ε값 리스트
+    :param learning_rates: 에피소드별 학습률 리스트
+    :param steps: 에피소드별 스텝 수 리스트
+    :param filename: 그래프 이미지를 저장할 파일 이름
     """
-    주어진 데이터의 기본적인 통계 분석을 수행
-    data: 분석할 데이터 (Numpy 배열 또는 Pandas DataFrame)
-    """
-    if isinstance(data, np.ndarray):
-        data = pd.DataFrame(data)
-    print(data.describe())
+    rewards_smoothed = smooth_scores(rewards)
+    data = [rewards_smoothed, epsilons, learning_rates, steps]
+    titles = ['Rewards (Smoothed)', 'Epsilon Values', 'Learning Rates', 'Steps per Episode']
+    plot_learning_curves(data, titles, filename)

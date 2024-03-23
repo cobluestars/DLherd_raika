@@ -1,14 +1,8 @@
+# UserDefinedItem.py
+
 import numpy as np
 from scipy.stats import beta, lognorm, expon, binom
 import random
-
-def evaluate_context_based_options(self, context):
-    """
-    특정 컨텍스트에 기반하여 조건부 옵션 값을 계산
-    """
-    if self.contextBasedOptions:
-        return self.contextBasedOptions(context)
-    return None
 
 class UserDefinedItem:
     """
@@ -76,6 +70,14 @@ class UserDefinedItem:
         self.randomizeSelectionCount = randomizeSelectionCount
         self.selectionProbability = selectionProbability
         self.contextBasedOptions = contextBasedOptions
+
+    def evaluate_context_based_options(self, context):
+        """
+        특정 컨텍스트에 기반하여 조건부 옵션 값을 계산
+        """
+        if self.contextBasedOptions:
+            return self.contextBasedOptions(context)
+        return None
 
     def setting_probabilities(self):
         """
@@ -205,6 +207,20 @@ class UserDefinedItem:
                 #Binomial distribution: 고정된 수의 독립 시행에서 성공 횟수를 나타내는 이산 확률 분포, n: 시행 횟수, p: 각 시행에서 성공할 확률
                 n, p = self.options
                 return binom(n=n, p=p).rvs()
+            elif self.distribution == 'custom':
+                # 특정 상황에 따라 다른 통계적 지표를 사용하여 값 생성
+                if context and context.get('use_mode', False) and self.mode is not None:
+                    # 컨텍스트에 따라 mmode 사용
+                    return self.mode
+                elif context and context.get('use_median', False) and self.median is not None:
+                    # 컨텍스트에 따라 median 사용
+                    return self.median
+                elif context and context.get('use_weighted_mean', False) and self.weighted_mean is not None:
+                    # 컨텍스트에 따라 weighted_mean 사용
+                    return self.weighted_mean
+                elif context and context.get('use_geometric_mean', False) and self.geometric_mean is not None:
+                    # 컨텍스트에 따라 geometric_mean 사용
+                    return self.geometric_mean
             else:
                 raise ValueError(f"지원하지 않는 확률분포 타입입니다. Unsupported distribution type: {self.distribution}")
 
