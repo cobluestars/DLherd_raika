@@ -17,6 +17,7 @@ import numpy as np
 import random
 from Environment import Environment
 from model import QNetwork, EnvironmentModel
+from UserDefinedItem import UserDefinedItem
 from keras.optimizers import Adam
 from keras import backend as K # K: keras의 백엔드 함수를 지칭. 여기서는 특정 모델의 옵티마이저에 설정된 학습률 값을 변경하는 데에 사용
 
@@ -257,7 +258,7 @@ class MCTSNode:
 class Agent: 
     """Q-Network와 환경 모델을 사용하여 각 상태에서 최적의 행동을 결정하는 방법 학습하는 에이전트"""
     def __init__(self, state_size, action_size,
-                 gamma=0.95, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, learning_rate=0.001, new_learning_rate=None,
+                 gamma=0.95, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, new_epsilon=None, learning_rate=0.001, new_learning_rate=None,
                  user_defined_items=None, reward_function=None, termination_condition=None,
                  SOME_THRESHOLD=None, SOME_REWARD_THRESHOLD=None, SOME_STATE_THRESHOLD=None,
                  current_episode=None, average_reward=None,
@@ -277,6 +278,7 @@ class Agent:
         self.epsilon_decay = epsilon_decay # 각 에피소드 이후 탐험율을 감소시키는 비율
                                            # 너무 크면 에이전트의 충분한 탐험 불가능
                                            # 너무 작으면 학습이 비효율적
+        self.new_epsilon = new_epsilon
         
         self.learning_rate = learning_rate # 학습률: 에이전트의 학습 속도를 결정 (0 ~ 1)
                                            # 각 학습 단계에서 에이전트의 예측 오류를 얼마나 크게 조정할지 결정함.
@@ -348,12 +350,12 @@ class Agent:
         if len(self.memory) < batch_size:
             return #메모리에 충분한 데이터가 없으면 학습하지 않음.
         
-        minibatch = np.random.choice(self.memory, batch_size, replace=False) # 미니배치를 선택
-        states, actions, rewards, next_states, _= zip(*minibatch) # 미니배치로부터 데이터 추출
+        minibatch = random.sample(self.memory, batch_size) # 미니배치를 선택
+        for state, action, reward, next_state, done in minibatch: # 미니배치로부터 데이터 추출
 
-        # 환경 모델은 상태와 행동을 입력으로 받아, 다음 상태와 예상 보상을 출력함.
-        # 여기에서는 다음 상태와 보상을 각각의 목표로 하여 환경 모델을 학습시킴.
-        self.env_model.fit([np.array(states), np.array(actions)], [np.array(next_states), np.array(rewards)], epochs=1, verbose=0)
+            # 환경 모델은 상태와 행동을 입력으로 받아, 다음 상태와 예상 보상을 출력함.
+            # 여기에서는 다음 상태와 보상을 각각의 목표로 하여 환경 모델을 학습시킴.
+            self.env_model.fit([np.array([state]), np.array([action])], [np.array([next_state]), np.array([reward])], epochs=1, verbose=0)
 
     def should_use_mcts(self, state):
         """MCTS를 사용할지 여부를 결정하는 조건식"""
@@ -406,7 +408,16 @@ class Agent:
             # 학습된 정책에 따라 행동 선택
             qs = self.model.predict(np.array([state])) # 현재 상태에 대한 행동 가치 함수 예측
             return np.argmax(qs[0]) # 가장 높은 Q값을 가진 행동 선택
-    
+
+    def adjust_learning_rate(self):
+        """학습률을 동적으로 조정"""
+        K.set_value(self.model.optimizer.learning_rate, self.new_learning_rate)
+        K.set_value(self.env_model.optimizer.learning_rate, self.new_learning_rate)
+
+    def adjust_epsilon(self):
+        """탐험율을 동적으로 조정"""
+        self.epsilon = max(self.epsilon_min, min(1.0, self.new_epsilon))
+
     def replay(self, batch_size):
         """경험 리플레이를 통한 모델 학습 (저장된 경험을 사용해서 네트워크를 학습하는 역할), 미니배치를 무작위로 선택하여 학습"""
         # 메모리에 충분한 경험이 쌓이지 않았다면 함수를 종료
@@ -423,7 +434,7 @@ class Agent:
             target_predicted = predicted_reward if done else predicted_reward + self.gamma * np.amax(self.model.predict(predicted_next_state)[0])
 
             # 실제 경험과 환경 모델 예측을 통해 얻은 정보를 결합하여 최종 타겟을 결정
-            target = (target_real + target_predicted) / 2 # 두 타겟을 평균을 사용 (추후 개선)
+            target = (target_real + target_predicted) / 2 # 두 타겟의 평균을 사용 (추후 개선)
 
             # 현재 상태에 대한 모델의 예측 값을 가져옴
             target_f = self.model.predict(state)
@@ -435,12 +446,13 @@ class Agent:
         # 탐험율 감소
         self.update_epsilon()
 
+        # 학습 이후 특정 조건에 따라 학습률, 탐험율 조정 로직
+        if self.current_episode > self.SOME_THRESHOLD:
+                self.adjust_learning_rate()
+                self.adjust_epsilon()
+
         # 환경 모델 업데이트를 위한 미니배치 학습 (update_environment_model의 주기적인 호출)
         self.update_environment_model(batch_size)
-
-    def adjust_learning_rate(self, new_learning_rate):
-        """학습률을 동적으로 조정"""
-        K.set_value(self.moodel.optimizer.learning_rate, new_learning_rate)
 
     def evaluate_agent(self):
         """환경 모델을 사용한 시뮬레이션과 실제 환경과의 성능을 비교함."""

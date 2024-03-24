@@ -79,6 +79,16 @@ class UserDefinedItem:
             return self.contextBasedOptions(context)
         return None
 
+    def update_parameters(self, **kwargs):  # *^kwargs: 키워드 인자, update_parameters 메소드는 키워드 인자를 무제한으로 받아들임.
+        """
+        UserDefinedItem 인스턴스의 매개변수를 동적으로 업데이트하는 메소드
+        """
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                raise AttributeError(f"{self.__class__.__name__}에 '{key}'라는 속성이 없습니다.: {self.__class__.__name__} does not have an attribute named '{key}'")
+
     def setting_probabilities(self):
         """
         설정된 확률(probability_settings)에 따라, 옵션에서의 각 요소들이 선택될 확률을 계산
@@ -393,9 +403,6 @@ global_user_defined_items = [
 # 사용 예시는 아래와 같습니다.
 # for item in global_user_defined_items:
 #     print(item.generate_value(context=context))
-
-Q-Learning을 활용, 'UserDefinedItem' 및 '컨텍스트에 기반한 조건부 옵션 함수'를
-실제 데이터셋 혹은 이상적인 데이터셋과 최대한 부합하도록 강화학습할 예정
 """
 
 # 강화 학습은 추후 구현. TensorFlow, PyTorch와 같은 라이브러리를 사용하여
