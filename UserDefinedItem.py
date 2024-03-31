@@ -1,6 +1,7 @@
 # UserDefinedItem.py
 
 import numpy as np
+from datetime import datetime, timedelta
 from scipy.stats import beta, lognorm, expon, binom
 import random
 
@@ -14,14 +15,17 @@ class UserDefinedItem:
                  randomizeObjects=False, objectSelectionCount=1,  
                  randomizeSelectionCount=False, selectionProbability=False,
                  options=None, probability_settings=None,
+                 peak_times=None,
                  contextBasedOptions=None):
         """
         UserDefinedItem 인스턴스를 초기화
 
         :param name: 항목명 (str)
-        :param item_type: 데이터 타입 ('number', 'string', 'boolean', 'array', 'object')
+        :param item_type: 데이터 타입 ('time', 'number', 'string', 'boolean', 'array', 'object')
         :param options: 분포 생성에 사용될 옵션 (tuple, list 등)
         
+        :param peak_times: 피크 타임 설정 (['피크 타임 시작', '피크 타임 종료', '전체 시간 100% 기준으로 피크 타임 내에서 타임스탬프가 찍힐 확률 (미기재 시 0%)']: ['2024-04-01T06:00:00', '2024-04-01T08:00:00', 0.25])
+
         :param probability_settings: 배열의 요소 선택에 사용될 확률 설정
             # 예제
             options = ["apple", "banana", "cherry"]
@@ -54,6 +58,7 @@ class UserDefinedItem:
         """
         self.name = name
         self.type = item_type
+        self.peak_times = peak_times if peak_times else []
         self.distribution = distribution
         self.mean = mean
         self.std_dev = std_dev
@@ -126,18 +131,17 @@ class UserDefinedItem:
         if not self.probability_settings:
             #확률 설정이 없으면 무작위 선택
             return random.choice(self.options)
-        
-        # 확률에 따라 옵션 요소를 선택
-        selected_options = []
-        for option, probability in zip(self.options, probabilities):
+
+        selected_indexes = []
+        for index, (option, probability) in enumerate(zip(self.options, probabilities)):
             if random.random() * 100 < probability:
-                selected_options.append(option)
+                selected_indexes.append(index)
 
-        # 선택된 옵션 요소가 없다면 무작위로 하나를 선택
-        if not selected_options:
-            selected_options.append(random.choice(self.options))
+        # 선택된 인덱스가 없다면 무작위로 하나를 선택
+        if not selected_indexes:
+            selected_indexes.append(random.randint(0, len(self.options) - 1))
 
-        return random.choice(selected_options)
+        return selected_indexes # 선택된 모든 옵션의 인덱스를 반환
 
     def generate_value(self, context=None):
         """
@@ -157,8 +161,10 @@ class UserDefinedItem:
                     self.name = modified_options['name']
                 if 'type' in modified_options:
                     self.type = modified_options['type']
+                if 'peak_times' in modified_options:
+                    self.peak_times = modified_options['peak_times']
                 if 'distribution' in modified_options:
-                    self.name = modified_options['distribution']
+                    self.distribution = modified_options['distribution']
                 if 'mean' in modified_options:
                     self.mean = modified_options['mean']
                 if 'std_dev' in modified_options:
@@ -187,6 +193,82 @@ class UserDefinedItem:
                     self.selectionProbability = modified_options['selectionProbability']
                 if 'contextBasedOptions' in modified_options:
                     self.contextBasedOptions = modified_options['contextBasedOptions']
+
+        if self.type == 'time':
+        #시간 타입
+            # options가 now or 특정 시간 문자열일 경우, 해당 시간 반환
+            if isinstance(self.options, str):
+                if self.options == 'now':
+                    return datetime.now()
+                else:
+                    return datetime.fromisoformat(self.options)
+                
+            # options가 리스트 [시작 시간, 종료 시간] 형태일 경우,
+            elif isinstance(self.options, list):
+                start_time = datetime.fromisoformat(self.options[0])
+                end_time = datetime.fromisoformat(self.options[1])
+
+                if start_time > end_time:
+                    raise ValueError("시작 시간이 종료 시간보다 미래일 수 없습니다.")
+                    return datetime.now().isoformat()
+                
+                total_seconds = int((end_time - start_time).total_seconds())
+
+                # 피크 타임 확률 계산
+                specified_peak_probabilities = [peak[2] for peak in self.peak_times if len(peak) > 2]
+                total_peak_probability = sum(specified_peak_probabilities)
+
+                if total_peak_probability > 1:
+                    raise ValueError("피크 타임 확률의 합이 100%를 초과합니다.")
+
+                # 비피크 타임 확률 계산
+                non_peak_probability = 1 - total_peak_probability
+
+                # 전체 시간 범위 내 랜덤 타임스탬프 생성 로직
+                random_value = np.random.rand()
+                accumulated_probability = 0
+
+                # 피크 타임 처리
+                for peak in self.peak_times:
+                    peak_start, peak_end = datetime.fromisoformat(peak[0]), datetime.fromisoformat(peak[1])
+                    peak_duration = (peak_end - peak_start).total_seconds()
+                    peak_probability = peak[2]
+                    weighted_peak_probability = (peak_duration / total_seconds) * peak_probability * 8.5 # todo: 8.5 ~ 10배 곱해줘야 값이 제대로 나오는 이유 알아내기.
+                    accumulated_probability += weighted_peak_probability
+                    if random_value < accumulated_probability:
+                        # 피크 타임 내 랜덤 시간 선택
+                        random_second_within_peak = random.randint(0, int(peak_duration))
+                        return (peak_start + timedelta(seconds=random_second_within_peak)).isoformat()
+
+                # 비피크 타임 처리
+                current_time = start_time
+                for peak in sorted(self.peak_times, key=lambda x: datetime.fromisoformat(x[0])):
+                    peak_start, peak_end = datetime.fromisoformat(peak[0]), datetime.fromisoformat(peak[1])
+                    if current_time < peak_start:
+                        non_peak_duration = (peak_start - current_time).total_seconds()
+                        weighted_non_peak_probability = (non_peak_duration / total_seconds) * non_peak_probability
+                        accumulated_probability += weighted_non_peak_probability
+                        if random_value < accumulated_probability:
+                            # 비피크 타임 내 랜덤 시간 선택
+                            random_second = random.randint(0, int(non_peak_duration))
+                            return (current_time + timedelta(seconds=random_second)).isoformat()
+                    current_time = max(current_time, peak_end)
+
+                if current_time < end_time:
+                    non_peak_duration = (end_time - current_time).total_seconds()
+                    weighted_non_peak_probability = (non_peak_duration / total_seconds) * non_peak_probability
+                    accumulated_probability += weighted_non_peak_probability
+                    if random_value < accumulated_probability:
+                        # 비피크 타임 내 랜덤 시간 선택
+                        random_second = random.randint(0, int(non_peak_duration))
+                        return (current_time + timedelta(seconds=random_second)).isoformat()
+
+                # 주어진 확률에 따라 타임스탬프를 생성하지 못한 경우, 기본값 반환
+                return datetime.now().isoformat()
+    
+            else:
+                raise ValueError("올바르지 않은 시간 옵션입니다.")
+                return datetime.now().isoformat()
 
         if self.type == 'number':
         #숫자 타입
@@ -259,6 +341,8 @@ class UserDefinedItem:
                 if all(isinstance(option, (UserDefinedItem, list, str, int, float, bool)) for option in self.options):
                     result = [] # 결과 리스트를 초기화
 
+                    selected_indexes = range(len(self.options))  # 모든 인덱스를 선택
+
                     # 배열 요소를 선택해야 하는 경우
                     if self.randomizeArrays:
                         # 확률 기반 선택(selectionProbability)가 활성화되어 있고 확률 설정(probability_setting)이 제공된 경우
@@ -279,14 +363,29 @@ class UserDefinedItem:
                     # 배열을 무작위로 선택하지 않는 경우, 모든 옵션을 사용
                     selected_indexes = range(len(self.options))
 
-                for i in selected_indexes:
-                    option = self.options[i]
-                    # 옵션이 UserDefinedItem 인스턴스인 경우, 그 인스턴스의 generate_value 메서드를 재귀적으로 호출
-                    if isinstance(option, UserDefinedItem):
-                        result.append(option.generate_value())
-                    else:
-                        # 리터럴(정수, 문자열, 부동소수점 등)은 직접 결과 리스트에 추가
-                        result.append(option)
+                if self.randomizeArrays == True:
+                    # 배열에서 선택된 인덱스에 해당하는 항목을 처리
+                    for i in selected_indexes:
+                        option = self.options[i]
+                        # 옵션이 UserDefinedItem 인스턴스인 경우, 그 인스턴스의 generate_value 메서드를 재귀적으로 호출
+                        if isinstance(option, UserDefinedItem):
+                            generated_value = option.generate_value()
+                            # 여기에서 결과를 구조화히여 추가
+                            result.append({option.name: generated_value})
+                        else:
+                            # 리터럴(정수, 문자열, 부동소수점 등)은 직접 결과 리스트에 추가
+                            result.append(option)
+                    return result
+                else:
+                    for option in self.options: # 배열에서 모든 인덱스를 처리
+                        if isinstance(option, UserDefinedItem):
+                            generated_value = option.generate_value()
+                            # option.name을 키로 사용하고, generated_value를 값으로 사용하여 딕셔너리 생성
+                            result.append({option.name: generated_value})
+                            # 'array' 타입의 이름을 키로, 결과 리스트를 값으로 사용하여 딕셔너리 반환
+                        else:
+                            result.append(option)
+ 
                 return result
             else:
                 raise ValueError("'array' 타입의 'options'는 UserDefinedItem 인스턴스나 리터럴 값이 포함된 리스트여야 합니다.: Options for 'array' type must be a list of UserDefinedItem instances or literals.")
@@ -312,99 +411,26 @@ class UserDefinedItem:
                     selected_keys = list(self.options.keys())
 
                 result = {}
-                for key in selected_keys:
-                    option = self.options[key]
-                    # 옵션이 UserDefinedItem 인스턴스인 경우, 그 인스턴스의 generate_value 메서드를 재귀적으로 호출
-                    if isinstance(option, UserDefinedItem):
-                        result[key] = option.generate_value()
-                    else:
-                        #리터럴(정수, 문자열, 부동소수점 등)은 직접 결과 객체에 추가
-                        result[key] = option
-                return result
+
+                if self.randomizeObjects == True:
+                    for key in selected_keys:
+                        option = self.options[key]
+                        # 옵션이 UserDefinedItem 인스턴스인 경우, 그 인스턴스의 generate_value 메서드를 재귀적으로 호출
+                        if isinstance(option, UserDefinedItem):
+                            generated_value = option.generate_value()
+                            result[key] = option.generate_value()
+                        else:
+                            #리터럴(정수, 문자열, 부동소수점 등)은 직접 결과 객체에 추가
+                            result[key] = option
+                else:
+                    for key, option in self.options.items(): # 모든 객체의 속성을 포함
+                        if isinstance(option, UserDefinedItem):
+                            # UserDefinedItem 인스턴스에 대해서는 generate_value 메서드를 호출
+                            generated_value = option.generate_value()
+                            result[key] = generated_value
+                        else:
+                            # 리터럴 값은 직접 결과 객체에 추가
+                            result[key] = option
+                return result  
             else:
                 raise ValueError("'object' 타입의 'options'는 딕셔너리로 제공되어야 합니다.: Options for 'object' type must be a dict.")
-
-"""
-# 컨텍스트에 기반한 조건부 옵션 예시 함수
-def context_based_salary_for_student(context):
-    from random import random
-    if random() < 0.001:  # 0.1% 확률
-        return {"options": [20000, 100000]}
-
-def context_based_salary_for_developer(context):
-    if context['age'] < 30:
-        return {"options": [20000, 40000], "distribution": "normal", "mean": 27000}
-    else:
-        return {"options": [30000, 100000], "distribution": "normal", "mean": 40000}
-
-def context_based_salary_for_accountant(context):
-    if context['age'] < 30:
-        return {"options": [25000, 40000], "distribution": "normal", "mean": 30000}
-    else:
-        return {"options": [30000, 100000], "distribution": "normal", "mean": 40000}
-
-# 커스텀 데이터 항목 인스턴스 생성
-global_user_defined_items = [
-    UserDefinedItem(
-        name='job',
-        type='array',
-        options=[
-            UserDefinedItem(
-                name='student',
-                type='array',
-                options=[
-                    UserDefinedItem(name='age', type='number', options=[10, 30]),
-                    UserDefinedItem(name='salary', type='number', options=[8000, 20000],
-                                    contextBasedOptions=context_based_salary_for_student)
-                ]
-            ),
-            UserDefinedItem(
-                name='developer',
-                type='array',
-                options=[
-                    UserDefinedItem(name='age', type='number', distribution='normal', mean=40, options=[20, 60]),
-                    UserDefinedItem(name='salary', type='number',
-                                    contextBasedOptions=context_based_salary_for_developer)
-                ]
-            ),
-            UserDefinedItem(
-                name='accountant',
-                type='array',
-                options=[
-                    UserDefinedItem(name='age', type='number', distribution='normal', mean=40, options=[20, 60]),
-                    UserDefinedItem(name='salary', type='number',
-                                    contextBasedOptions=context_based_salary_for_accountant)
-                ]
-            )
-        ],
-        randomizeArrays=True,
-        selectionProbability=True,
-        probability_settings=[
-            {"identifier": "developer", "probability": 45},  # 45% 확률로 developer 선택
-            {"identifier": "accountant", "probability": 45}  # 45% 확률로 accountant 선택
-        ]
-    ),
-    UserDefinedItem(
-        name='favorite drinks',
-        type='array',
-        options=['Americano', 'Latte', 'Cappuccino', 'Green Tea Latte'],
-        randomizeArrays=True
-    ),
-    UserDefinedItem(
-        name='hobbies',
-        type='object',
-        options={'hobby1': 'reading', 'hobby2': 'gaming', 'hobby3': 'coding', 'hobby4': 'hiking'},
-        randomizeObjects=True,
-        objectSelectionCount=3,
-        randomizeSelectionCount=True
-    )
-]
-
-# 사용 예시는 아래와 같습니다.
-# for item in global_user_defined_items:
-#     print(item.generate_value(context=context))
-"""
-
-# 강화 학습은 추후 구현. TensorFlow, PyTorch와 같은 라이브러리를 사용하여
-# 정책 기반 학습, 가치 기반 학습 등의 접근 방법을 고려
-# 이걸로 튜링머신을 딥러닝 모델링해 보자!

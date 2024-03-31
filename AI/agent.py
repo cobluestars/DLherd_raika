@@ -15,6 +15,11 @@
 import math
 import numpy as np
 import random
+import sys
+
+# Python 모듈 검색 경로에 디렉토리 추가
+sys.path.append('c:\\DLherd_raika')
+
 from Environment import Environment
 from model import QNetwork, EnvironmentModel
 from UserDefinedItem import UserDefinedItem
@@ -39,6 +44,12 @@ def apply_action_to_state(current_state, action, user_defined_items):
             if action['action_type'] == 'option' or action['action_type'] == 'context_option':
                 # 옵션 또는 조건부 옵션 기반 행동 처리
                 new_state[action['item_name']] = action['action_value']
+
+            elif action['action_type'] == 'peak_times_setting':
+                # 시간 설정 기반 행동 처리
+                if 'peak_times' in action:
+                    item.peak_times = action['peak_times']
+                new_state[item.name] = item.generate_value()
 
             elif action['action_type'] == 'probability_setting':
                 # 확률 설정 기반 행동 처리
@@ -110,6 +121,11 @@ class MCTSNode:
                 if context_based_options and 'options' in context_based_options:
                     for option in context_based_options['options']:
                         possible_actions.append({'action_type': 'context_option', 'item_name': item.name, 'action_value': option})
+
+            # 시간 설정을 기반으로 행동 추가
+            if item.peak_times:
+                action = {'action_type': 'peak_times', 'item_name': item.name, 'peak_times': item.peak_times}
+                possible_actions.append(action)
 
             # 확률 설정을 기반으로 행동 추가
             if item.probability_settings:

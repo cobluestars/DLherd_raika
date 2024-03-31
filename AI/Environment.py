@@ -1,6 +1,11 @@
 # environment.py: 학습 환경을 정의하는 파일. 에이전트가 상호작용할 학습 환경을 시뮬레이션함.
 
 import numpy as np
+import sys
+
+# Python 모듈 검색 경로에 디렉토리 추가
+sys.path.append('c:\\DLherd_raika')
+
 from UserDefinedItem import UserDefinedItem
 
 class Environment:
