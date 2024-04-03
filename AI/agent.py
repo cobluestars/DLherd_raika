@@ -318,7 +318,7 @@ class Agent:
         self.average_reward = average_reward
         self.state_analysis_callback = state_analysis_callback
 
-        self.env = Environment(state_size, action_size) # 에이전트가 상호작용할 강화학습의 환경을 설정
+        self.env = Environment(user_defined_items=user_defined_items, state_size=state_size, action_size=action_size) # 에이전트가 상호작용할 강화학습의 환경을 설정
         
         #환경 모델: 상태와 행동을 입력으로 받아 다음 상태와 예상 보상을 예측함.
         self.env_model = EnvironmentModel(state_size, action_size)

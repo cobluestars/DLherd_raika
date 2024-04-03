@@ -199,14 +199,41 @@ class UserDefinedItem:
             # options가 now or 특정 시간 문자열일 경우, 해당 시간 반환
             if isinstance(self.options, str):
                 if self.options == 'now':
-                    return datetime.now()
+                    return datetime.now().isoformat()
                 else:
                     return datetime.fromisoformat(self.options)
                 
             # options가 리스트 [시작 시간, 종료 시간] 형태일 경우,
-            elif isinstance(self.options, list):
-                start_time = datetime.fromisoformat(self.options[0])
-                end_time = datetime.fromisoformat(self.options[1])
+            # options가 리스트 ['now', 1, 'seconds'] (현재 시간 ~ 1초 후) or [1, 'now', 'seconds'] (1초 전 ~ 현재 시간) 형태일 경우,
+            elif isinstance(self.options, list) and len(self.options) >= 2:
+                
+                now = datetime.now()
+                delta = None  # 시간 변경량을 저장할 변수 초기화
+
+                # 시간 단위 처리
+                time_unit = self.options[2] if len(self.options) > 2 else 'seconds'
+                
+                # 'now'를 처리
+                if 'now' in self.options:
+                    now = datetime.now()
+                    time_delta_value = self.options[0] if self.options[1] == 'now' else self.options[1]
+                    
+                    if time_unit == 'seconds':
+                        delta = timedelta(seconds=time_delta_value)
+                    elif time_unit == 'minutes':
+                        delta = timedelta(minutes=time_delta_value)
+                    elif time_unit == 'hours':
+                        delta = timedelta(hours=time_delta_value)
+                    elif time_unit == 'days':
+                        delta = timedelta(days=time_delta_value)
+                    
+                   # 시작 및 종료 시간 계산
+                    start_time = now if self.options[0] == 'now' else now - delta
+                    end_time = now + delta if self.options[0] == 'now' else now
+                else:
+                    # 'now'가 없을 경우 정적 시간 처리
+                    start_time = datetime.fromisoformat(self.options[0])
+                    end_time = datetime.fromisoformat(self.options[1])
 
                 if start_time > end_time:
                     raise ValueError("시작 시간이 종료 시간보다 미래일 수 없습니다.")
@@ -233,8 +260,7 @@ class UserDefinedItem:
                     peak_start, peak_end = datetime.fromisoformat(peak[0]), datetime.fromisoformat(peak[1])
                     peak_duration = (peak_end - peak_start).total_seconds()
                     peak_probability = peak[2]
-                    weighted_peak_probability = (peak_duration / total_seconds) * peak_probability * 8.5 # todo: 8.5 ~ 10배 곱해줘야 값이 제대로 나오는 이유 알아내기.
-                    accumulated_probability += weighted_peak_probability
+                    accumulated_probability += peak_probability
                     if random_value < accumulated_probability:
                         # 피크 타임 내 랜덤 시간 선택
                         random_second_within_peak = random.randint(0, int(peak_duration))
@@ -246,7 +272,8 @@ class UserDefinedItem:
                     peak_start, peak_end = datetime.fromisoformat(peak[0]), datetime.fromisoformat(peak[1])
                     if current_time < peak_start:
                         non_peak_duration = (peak_start - current_time).total_seconds()
-                        weighted_non_peak_probability = (non_peak_duration / total_seconds) * non_peak_probability
+                        weighted_non_peak_probability = non_peak_probability
+                        # (non_peak_duration / total_seconds) * non_peak_probability
                         accumulated_probability += weighted_non_peak_probability
                         if random_value < accumulated_probability:
                             # 비피크 타임 내 랜덤 시간 선택
@@ -279,15 +306,16 @@ class UserDefinedItem:
             # 확률 분포에 따른 값 생성 로직
             if self.distribution == 'uniform':
                 #완전 랜덤한 값 생성(uniform distribution)
-                return np.random.uniform(self.options[0], self.options[1])
+                return (np.random.uniform(self.options[0], self.options[1]))
             elif self.distribution == 'normal':
                 #정규 분포에서 값 생성(gaussian distribution)
                 if self.mean is None or self.std_dev is None:
                     raise ValueError("Normal distribution requires 'mean' and 'std_dev' values.")
-                return np.random.normal(self.mean, self.std_dev)
+                return (np.random.normal(self.mean, self.std_dev))
             elif self.distribution == 'beta':
                 #베타 분포에서 값 생성(beta distribution): 0과 1 사이 값을 갖는 분포로, 두 매개변수 a와 b에 의해 모양이 결정됨.
-                a, b = self.options
+                a = self.options[0]
+                b = self.options[1]
                 return beta(a, b).rvs()
             elif self.distribution == 'log-normal':
                 #Log-normal distribution: 변량의 로그가 정규 분포를 이루는 분포. 주로 비대칭적 데이터에 사용됨.
@@ -297,7 +325,8 @@ class UserDefinedItem:
                 return expon(scale=1/self.mean).rvs()
             elif self.distribution == 'binomial':
                 #Binomial distribution: 고정된 수의 독립 시행에서 성공 횟수를 나타내는 이산 확률 분포, n: 시행 횟수, p: 각 시행에서 성공할 확률
-                n, p = self.options
+                n = self.options[0]
+                p = self.options[1]
                 return binom(n=n, p=p).rvs()
             elif self.distribution == 'custom':
                 # 특정 상황에 따라 다른 통계적 지표를 사용하여 값 생성

@@ -29,15 +29,15 @@ def context_based_salary_for_accountant(context):
         return {"name": "salary", "options": [30000, 100000], "distribution": "normal", "mean": 40000, "std_dev": 6}
 
 # 커스텀 데이터 항목 인스턴스 생성
-global_user_defined_items = [
+user_defined_items = [
     UserDefinedItem(
         name='TimeStamp',
         item_type='time',
-        options=['2024-04-01T00:00:00', '2024-04-01T08:00:00'],
+        options=[12, 'now', 'hours'],
         peak_times=[
-        ['2024-04-01T00:00:00', '2024-04-01T01:00:00', 0.3],
+        ['2024-04-03T00:45:00', '2024-04-03T01:00:00', 0.3],
         # ['2024-04-01T03:00:00', '2024-04-01T04:00:00', 0.2],
-        ['2024-04-01T07:00:00', '2024-04-01T08:00:00', 0.5]
+        ['2024-04-03T07:00:00', '2024-04-03T08:00:00', 0.5]
         ]
     ),
     UserDefinedItem(
@@ -98,12 +98,12 @@ global_user_defined_items = [
 # 데이터 생성
 def generate_data():
     data = []
-    peak_times = global_user_defined_items[0].peak_times
+    peak_times = user_defined_items[0].peak_times
     peak_time_counts = {(peak[0], peak[1]): 0 for peak in peak_times}
     
-    for _ in range(1000):
+    for _ in range(10):
         record = {}
-        for item in global_user_defined_items:
+        for item in user_defined_items:
             # 각 UserDefinedItem 인스턴스에 대해 컨텍스트(기준 설정)에 기반한 값 생성
             value = item.generate_value()
             record[item.name] = value

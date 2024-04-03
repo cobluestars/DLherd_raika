@@ -14,10 +14,19 @@ class Environment:
         self.user_defined_items = user_defined_items or [] # UserDefinedItem 인스턴스의 리스트
         self.state_size = state_size # 환경의 상태 개수 (상태 vector 크기)
         self.action_size = action_size # 가능한 행동의 수
-        self.state = np.zeros(state_size) # 초기 상태 (vector)
+        self.state = self.integrate_user_defined_items()
+        # np.zeros(state_size) # 초기 상태 (vector): 각 상태 변수에 대한 초기값을 모두 수치 0으로 설정
         self.state_change_rules = state_change_rules # 사용자 정의 상태 변화 규칙
         self.reward_rules = reward_rules # 사용자 정의 보상 규칙
         self.check_if_done = check_if_done # 사용자 정의 종료 조건 함수
+
+    def integrate_user_defined_items(self):
+        """UserDefinedItem 인스턴스를 환경 상태에 통합"""
+        state_representation = {}
+        # 각 UserDefinedItem으로부터 값을 생성하고 상태 정보에 반영, 업데이트
+        for item in self.user_defined_items:
+            state_representation[item.name] = item.generate_value()
+        return state_representation
 
     def update_parameters_with_data_stream(self, data_stream):
         """외부 데이터 소스로부터 입력을 받아 UserDefinedItem 인스턴스들의 매개변수를 업데이트함."""
@@ -27,15 +36,11 @@ class Environment:
 
     def update_state_with_user_defined_items(self):
         """각 UserDefinedItem 인스턴스로부터 값을 생성하고 상태 정보를 최신화"""
-        for item in self.user_defined_items:
-            # 각 UserDefinedItem으로부터 값을 생성하고 상태 정보에 반영, 업데이트
-            self.state[item.name] = item.generate_value()
+        self.state = self.integrate_user_defined_items()
 
     def reset(self):
         """환경을 초기 상태로 리셋"""
         self.update_state_with_user_defined_items()
-        
-        self.state = np(self.state_size)
         return self.state
     
     def step(self, action):
